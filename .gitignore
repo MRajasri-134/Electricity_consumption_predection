@@ -20,7 +20,6 @@ backend/.env.*
 backend/data/*.txt
 
 # Generated machine learning models and metrics
-backend/models/*.joblib
 backend/models/training_metrics.json
 
 # IDE settings

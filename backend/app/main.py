@@ -15,7 +15,7 @@ from .schemas import PredictionInput, SettingUpdate
 BASE_DIR = Path(__file__).resolve().parents[1]
 MODEL_PATH = BASE_DIR / 'models' / 'consumption_model.joblib'
 app = FastAPI(title='PowerPredict API', version='1.0.0', description='Electricity consumption forecasting and analytics API')
-origins = os.getenv('CORS_ORIGINS', 'http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:8000').split(',')
+origins = os.getenv('CORS_ORIGINS', 'http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:8000,"https://electricity-consumption-predection.onrender.com",').split(',')
 app.add_middleware(CORSMiddleware, allow_origins=[x.strip() for x in origins], allow_credentials=True, allow_methods=['*'], allow_headers=['*'])
 
 @app.on_event('startup')

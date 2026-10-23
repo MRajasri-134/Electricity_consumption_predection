@@ -1,4 +1,4 @@
-const API_BASE = localStorage.getItem('powerpredict_api') || 'http://127.0.0.1:8000';
+const API_BASE = localStorage.getItem('powerpredict_api') || 'https://electricity-consumption-predection-e2bb.onrender.com';
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 let predictions = [], chartInstances = {}, apiOnline = false;

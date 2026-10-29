@@ -18,54 +18,7 @@ function makeChart(id,type,labels,datasets,options={}){const canvas=document.get
 function lineDataset(label,data,color,dash=[]){return {label,data,borderColor:color,backgroundColor:color+'22',borderWidth:2,pointRadius:2,pointHoverRadius:4,tension:.35,fill:false,borderDash:dash,spanGaps:true}}
 function toggleEmpty(id,show){const el=$('#'+id);if(el)el.classList.toggle('show',show)}
 function drawDashboardCharts(rows){const recent=rows.slice(-14);const labels=recent.map(r=>r.prediction_date.slice(5));const vals=recent.map(r=>r.predicted_kwh);const actual=recent.map(r=>r.actual_kwh);toggleEmpty('trendEmpty',!rows.length);toggleEmpty('weekdayEmpty',!rows.length);toggleEmpty('overviewEmpty',!rows.length);if(!rows.length){['dashboardTrend','weekdayChart','overviewChart'].forEach(destroyChart);return}makeChart('dashboardTrend','line',labels,[lineDataset('Predicted',vals,'#31b9ff'),lineDataset('Actual',actual,'#a96bff',[5,4])]);const weekdays=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];const sums=Array(7).fill(0),counts=Array(7).fill(0);rows.forEach(r=>{const day=(new Date(r.prediction_date+'T12:00:00').getDay()+6)%7;sums[day]+=r.predicted_kwh;counts[day]++});makeChart('weekdayChart','bar',weekdays,[{label:'Average kWh',data:sums.map((s,i)=>counts[i]?+(s/counts[i]).toFixed(2):0),backgroundColor:'#138bfa',borderRadius:4}],{scales:{x:{...chartDefaults.scales.x,grid:{display:false}},y:chartDefaults.scales.y}});const byType=['Weekday','Weekend'].map(t=>rows.filter(r=>r.day_type===t).length);makeChart('overviewChart','doughnut',['Weekday','Weekend'],[{data:byType,backgroundColor:['#138bfa','#a65cf6'],borderWidth:0,hoverOffset:4}],{cutout:'68%',plugins:{legend:{display:true,position:'bottom',labels:{color:'#a9c0df',boxWidth:8,font:{size:10},padding:15}}}})}
-function renderRows(rows, target) {
-const el = $(target);
-
-if (!rows.length) {
-    const columns = target === '#historyRows' ? 7 : 6;
-    el.innerHTML = `<tr><td colspan="${columns}" class="table-empty">No prediction records found.</td></tr>`;
-    return;
-}
-
-el.innerHTML = rows.map(r => {
-    const actualSaved = r.actual_kwh != null;
-    const isHistory = target === '#historyRows';
-
-    return `
-        <tr>
-            <td>${r.prediction_date}</td>
-            <td>${r.day_type}</td>
-            <td>${fmt(r.previous_day_kwh)}</td>
-            <td><b>${fmt(r.predicted_kwh)}</b></td>
-            <td>${actualSaved ? fmt(r.actual_kwh) : '—'}</td>
-            <td>
-                <span class="status-badge ${actualSaved ? '' : 'pending'}">
-                    ${actualSaved ? 'Actual saved' : 'Forecast'}
-                </span>
-            </td>
-            ${isHistory ? `
-                <td>
-                    <div class="actual-entry">
-                        <input
-                            type="number"
-                            class="actual-input"
-                            min="0"
-                            step="0.01"
-                            placeholder="Actual kWh"
-                            aria-label="Actual consumption in kWh"
-                            value="${actualSaved ? r.actual_kwh : ''}"
-                        >
-                        <button
-                            type="button"
-                            class="save-actual-btn"
-                            data-id="${r.id}"
-                        >Save</button>
-                    </div>
-                </td>
-            ` : ''}
-        </tr>
-    `;
-}).join('');
+function renderRows(rows, target) {const el = $(target);if (!rows.length) {el.innerHTML = `<tr><td colspan="${target === '#historyRows' ? 7 : 6}" class="table-empty">No prediction records found.</td></tr>`;return;}el.innerHTML = rows.map(r => { const actualSaved = r.actual_kwh != null;const isHistory = target === '#historyRows';return `<tr><td>${r.prediction_date}</td><td>${r.day_type}</td><td>${fmt(r.previous_day_kwh)}</td><td><b>${fmt(r.predicted_kwh)}</b></td><td>${actualSaved ? fmt(r.actual_kwh) : '—'}</td><td><span class="status-badge ${actualSaved ? '' : 'pending'}">${actualSaved ? 'Actual saved' : 'Forecast'}</span></td>${isHistory ? `<td<div class="actual-entry"><input type="number"class="actual-input"min="0"step="0.01"placeholder="Actual kWh"aria-label="Actual consumption in kWh"value="${actualSaved ? r.actual_kwh : ''}"><button type="button"class="save-actual-btn"data-id="${r.id}">Save</button></div></td>` : ''}</tr>`;}).join('');}
 async function loadAll(){try{const [dash,history,health]=await Promise.all([api('/api/dashboard'),api('/api/predictions?limit=500'),api('/api/health')]);predictions=history;setConnection(true);hideNotice();const sum=dash.history.reduce((s,r)=>s+Number(r.predicted_kwh||0),0);$('#totalStat').textContent=fmt(sum)+' kWh';$('#averageStat').textContent=fmt(dash.average_prediction_kwh)+' kWh';$('#latestStat').textContent=fmt(dash.latest_prediction_kwh)+' kWh';$('#modelStat').textContent=health.model_trained?'Trained':'Not trained';$('#modelSub').textContent=health.model_trained?'Model file loaded':'Run train_model.py';$('#quickResult').textContent=history.length?fmt(history[0].predicted_kwh)+' kWh':'— kWh';drawDashboardCharts(history.slice().reverse());renderRows(history.slice(0,6),'#recentRows');renderRows(history,'#historyRows');$('#historyCount').textContent=history.length+' records';if(!health.model_trained)showNotice('The API is connected, but no trained model was found. Run the model training command in the README; predictions currently use a simple fallback until training is complete.');}catch(e){setConnection(false);showNotice('Cannot connect to the backend. Start FastAPI, check MySQL settings, and refresh this page. Details: '+e.message);drawDashboardCharts([]);}}
 async function submitPrediction(form){const fd=new FormData(form);const payload={prediction_date:fd.get('prediction_date'),previous_day_kwh:Number(fd.get('previous_day_kwh')),day_type:fd.get('day_type')||'Weekday'};if(fd.get('temperature'))payload.temperature=Number(fd.get('temperature'));if(fd.get('humidity'))payload.humidity=Number(fd.get('humidity'));if(!payload.prediction_date||!Number.isFinite(payload.previous_day_kwh)||payload.previous_day_kwh<0){toast('Enter a valid date and previous consumption.');return}const btn=form.querySelector('button[type="submit"]');const old=btn.textContent;btn.disabled=true;btn.textContent='Predicting…';try{const result=await api('/api/predict',{method:'POST',body:JSON.stringify(payload)});$('#predictionValue').innerHTML=fmt(result.predicted_kwh)+' <small>kWh</small>';$('#predictionMessage').textContent='Forecast saved successfully to your prediction history.';$('#resultDate').textContent=result.prediction_date;$('#resultPrevious').textContent=fmt(result.previous_day_kwh)+' kWh';$('#resultModel').textContent=result.model_trained?'Trained ML model':'Fallback model';$('#summaryDate').textContent=result.prediction_date;$('#summaryPrevious').textContent=fmt(result.previous_day_kwh)+' kWh';$('#summaryDayType').textContent=result.day_type;$('#quickResult').textContent=fmt(result.predicted_kwh)+' kWh';$('#quickResultNote').textContent='Saved to prediction history';toast('Prediction saved successfully.');await loadAll();goPage('predict');}catch(e){toast('Prediction failed: '+e.message)}finally{btn.disabled=false;btn.textContent=old}}
 $('#predictForm').addEventListener('submit',e=>{e.preventDefault();submitPrediction(e.currentTarget)});$('#quickForm').addEventListener('submit',e=>{e.preventDefault();submitPrediction(e.currentTarget)});

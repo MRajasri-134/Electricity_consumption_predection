@@ -41,6 +41,26 @@ function renderRows(rows, target) {
             <td><b>${fmt(r.predicted_kwh)}</b></td>
 
             <td>
+                ${target === '#historyRows' ? `
+                    <div class="actual-entry">
+                        <input type="number"
+                            class="actual-input"
+                            data-id="${r.id}"
+                            min="0"
+                            step="0.01"
+                            value="${actualSaved ? r.actual_kwh : ''}"
+                            placeholder="Enter kWh">
+
+                        <button type="button"
+                            class="save-actual-btn"
+                            data-id="${r.id}">
+                            Save
+                        </button>
+                    </div>
+                ` : actualSaved ? fmt(r.actual_kwh) : '—'}
+            </td>
+
+            <td>
                 <span class="status-badge ${actualSaved ? '' : 'pending'}">
                     ${actualSaved ? 'Actual saved' : 'Forecast'}
                 </span>

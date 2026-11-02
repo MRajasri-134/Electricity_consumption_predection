@@ -23,8 +23,7 @@ function renderRows(rows, target) {
 
     if (!rows.length) {
         el.innerHTML = `<tr>
-            <td colspan="${target === '#historyRows' ? 7 : 6}"
-                class="table-empty">
+            <td colspan="6" class="table-empty">
                 No prediction records found.
             </td>
         </tr>`;
@@ -40,28 +39,12 @@ function renderRows(rows, target) {
             <td>${r.day_type}</td>
             <td>${fmt(r.previous_day_kwh)}</td>
             <td><b>${fmt(r.predicted_kwh)}</b></td>
-            <td>${actualSaved ? fmt(r.actual_kwh) : '—'}</td>
+
             <td>
                 <span class="status-badge ${actualSaved ? '' : 'pending'}">
                     ${actualSaved ? 'Actual saved' : 'Forecast'}
                 </span>
             </td>
-            ${target === '#historyRows' ? `
-            <td>
-                <div class="actual-entry">
-                    <input type="number"
-                    class="actual-input"
-                    data-id="${r.id}"
-                    min="0"
-                    step="0.01"
-                    placeholder="Actual kWh">
-                    <button type="button"
-                        class="save-actual-btn"
-                        data-id="${r.id}">
-                        Save
-                    </button>
-                </div>
-            </td>` : ''}
         </tr>`;
     }).join('');
 }async function loadAll(){try{const [dash,history,health]=await Promise.all([api('/api/dashboard'),api('/api/predictions?limit=500'),api('/api/health')]);predictions=history;setConnection(true);hideNotice();const sum=dash.history.reduce((s,r)=>s+Number(r.predicted_kwh||0),0);$('#totalStat').textContent=fmt(sum)+' kWh';$('#averageStat').textContent=fmt(dash.average_prediction_kwh)+' kWh';$('#latestStat').textContent=fmt(dash.latest_prediction_kwh)+' kWh';$('#modelStat').textContent=health.model_trained?'Trained':'Not trained';$('#modelSub').textContent=health.model_trained?'Model file loaded':'Run train_model.py';$('#quickResult').textContent=history.length?fmt(history[0].predicted_kwh)+' kWh':'— kWh';drawDashboardCharts(history.slice().reverse());renderRows(history.slice(0,6),'#recentRows');renderRows(history,'#historyRows');$('#historyCount').textContent=history.length+' records';if(!health.model_trained)showNotice('The API is connected, but no trained model was found. Run the model training command in the README; predictions currently use a simple fallback until training is complete.');}catch(e){setConnection(false);showNotice('Cannot connect to the backend. Start FastAPI, check MySQL settings, and refresh this page. Details: '+e.message);drawDashboardCharts([]);}}
@@ -100,7 +83,7 @@ document.addEventListener('click', async function(e) {
         }
 
         alert('Actual consumption saved!');
-        await loadHistory();
+        await loadAll();
     } catch (error) {
         alert(error.message);
     }

@@ -18,8 +18,53 @@ function makeChart(id,type,labels,datasets,options={}){const canvas=document.get
 function lineDataset(label,data,color,dash=[]){return {label,data,borderColor:color,backgroundColor:color+'22',borderWidth:2,pointRadius:2,pointHoverRadius:4,tension:.35,fill:false,borderDash:dash,spanGaps:true}}
 function toggleEmpty(id,show){const el=$('#'+id);if(el)el.classList.toggle('show',show)}
 function drawDashboardCharts(rows){const recent=rows.slice(-14);const labels=recent.map(r=>r.prediction_date.slice(5));const vals=recent.map(r=>r.predicted_kwh);const actual=recent.map(r=>r.actual_kwh);toggleEmpty('trendEmpty',!rows.length);toggleEmpty('weekdayEmpty',!rows.length);toggleEmpty('overviewEmpty',!rows.length);if(!rows.length){['dashboardTrend','weekdayChart','overviewChart'].forEach(destroyChart);return}makeChart('dashboardTrend','line',labels,[lineDataset('Predicted',vals,'#31b9ff'),lineDataset('Actual',actual,'#a96bff',[5,4])]);const weekdays=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];const sums=Array(7).fill(0),counts=Array(7).fill(0);rows.forEach(r=>{const day=(new Date(r.prediction_date+'T12:00:00').getDay()+6)%7;sums[day]+=r.predicted_kwh;counts[day]++});makeChart('weekdayChart','bar',weekdays,[{label:'Average kWh',data:sums.map((s,i)=>counts[i]?+(s/counts[i]).toFixed(2):0),backgroundColor:'#138bfa',borderRadius:4}],{scales:{x:{...chartDefaults.scales.x,grid:{display:false}},y:chartDefaults.scales.y}});const byType=['Weekday','Weekend'].map(t=>rows.filter(r=>r.day_type===t).length);makeChart('overviewChart','doughnut',['Weekday','Weekend'],[{data:byType,backgroundColor:['#138bfa','#a65cf6'],borderWidth:0,hoverOffset:4}],{cutout:'68%',plugins:{legend:{display:true,position:'bottom',labels:{color:'#a9c0df',boxWidth:8,font:{size:10},padding:15}}}})}
-function renderRows(rows,target){const el=$(target);if(!rows.length){el.innerHTML='<tr><td colspan="6" class="table-empty">No prediction records found.</td></tr>';return}el.innerHTML=rows.map(r=>`<tr><td>${r.prediction_date}</td><td>${r.day_type}</td><td>${fmt(r.previous_day_kwh)}</td><td><b>${fmt(r.predicted_kwh)}</b></td><td>${r.actual_kwh==null?'—':fmt(r.actual_kwh)}</td><td><span class="status-badge ${r.actual_kwh==null?'pending':''}">${r.actual_kwh==null?'Forecast':'Actual saved'}</span></td></tr>`).join('')}
-async function loadAll(){try{const [dash,history,health]=await Promise.all([api('/api/dashboard'),api('/api/predictions?limit=500'),api('/api/health')]);predictions=history;setConnection(true);hideNotice();const sum=dash.history.reduce((s,r)=>s+Number(r.predicted_kwh||0),0);$('#totalStat').textContent=fmt(sum)+' kWh';$('#averageStat').textContent=fmt(dash.average_prediction_kwh)+' kWh';$('#latestStat').textContent=fmt(dash.latest_prediction_kwh)+' kWh';$('#modelStat').textContent=health.model_trained?'Trained':'Not trained';$('#modelSub').textContent=health.model_trained?'Model file loaded':'Run train_model.py';$('#quickResult').textContent=history.length?fmt(history[0].predicted_kwh)+' kWh':'— kWh';drawDashboardCharts(history.slice().reverse());renderRows(history.slice(0,6),'#recentRows');renderRows(history,'#historyRows');$('#historyCount').textContent=history.length+' records';if(!health.model_trained)showNotice('The API is connected, but no trained model was found. Run the model training command in the README; predictions currently use a simple fallback until training is complete.');}catch(e){setConnection(false);showNotice('Cannot connect to the backend. Start FastAPI, check MySQL settings, and refresh this page. Details: '+e.message);drawDashboardCharts([]);}}
+function renderRows(rows, target) {
+    const el = $(target);
+
+    if (!rows.length) {
+        el.innerHTML = `<tr>
+            <td colspan="${target === '#historyRows' ? 7 : 6}"
+                class="table-empty">
+                No prediction records found.
+            </td>
+        </tr>`;
+        return;
+    }
+
+    el.innerHTML = rows.map(r => {
+        const actualSaved = r.actual_kwh != null;
+
+        return `
+        <tr>
+            <td>${r.prediction_date}</td>
+            <td>${r.day_type}</td>
+            <td>${fmt(r.previous_day_kwh)}</td>
+            <td><b>${fmt(r.predicted_kwh)}</b></td>
+            <td>${actualSaved ? fmt(r.actual_kwh) : '—'}</td>
+            <td>
+                <span class="status-badge ${actualSaved ? '' : 'pending'}">
+                    ${actualSaved ? 'Actual saved' : 'Forecast'}
+                </span>
+            </td>
+            ${target === '#historyRows' ? `
+            <td>
+                <div class="actual-entry">
+                    <input type="number"
+                    class="actual-input"
+                    data-id="${r.id}"
+                    min="0"
+                    step="0.01"
+                    placeholder="Actual kWh">
+                    <button type="button"
+                        class="save-actual-btn"
+                        data-id="${r.id}">
+                        Save
+                    </button>
+                </div>
+            </td>` : ''}
+        </tr>`;
+    }).join('');
+}async function loadAll(){try{const [dash,history,health]=await Promise.all([api('/api/dashboard'),api('/api/predictions?limit=500'),api('/api/health')]);predictions=history;setConnection(true);hideNotice();const sum=dash.history.reduce((s,r)=>s+Number(r.predicted_kwh||0),0);$('#totalStat').textContent=fmt(sum)+' kWh';$('#averageStat').textContent=fmt(dash.average_prediction_kwh)+' kWh';$('#latestStat').textContent=fmt(dash.latest_prediction_kwh)+' kWh';$('#modelStat').textContent=health.model_trained?'Trained':'Not trained';$('#modelSub').textContent=health.model_trained?'Model file loaded':'Run train_model.py';$('#quickResult').textContent=history.length?fmt(history[0].predicted_kwh)+' kWh':'— kWh';drawDashboardCharts(history.slice().reverse());renderRows(history.slice(0,6),'#recentRows');renderRows(history,'#historyRows');$('#historyCount').textContent=history.length+' records';if(!health.model_trained)showNotice('The API is connected, but no trained model was found. Run the model training command in the README; predictions currently use a simple fallback until training is complete.');}catch(e){setConnection(false);showNotice('Cannot connect to the backend. Start FastAPI, check MySQL settings, and refresh this page. Details: '+e.message);drawDashboardCharts([]);}}
 async function submitPrediction(form){const fd=new FormData(form);const payload={prediction_date:fd.get('prediction_date'),previous_day_kwh:Number(fd.get('previous_day_kwh')),day_type:fd.get('day_type')||'Weekday'};if(fd.get('temperature'))payload.temperature=Number(fd.get('temperature'));if(fd.get('humidity'))payload.humidity=Number(fd.get('humidity'));if(!payload.prediction_date||!Number.isFinite(payload.previous_day_kwh)||payload.previous_day_kwh<0){toast('Enter a valid date and previous consumption.');return}const btn=form.querySelector('button[type="submit"]');const old=btn.textContent;btn.disabled=true;btn.textContent='Predicting…';try{const result=await api('/api/predict',{method:'POST',body:JSON.stringify(payload)});$('#predictionValue').innerHTML=fmt(result.predicted_kwh)+' <small>kWh</small>';$('#predictionMessage').textContent='Forecast saved successfully to your prediction history.';$('#resultDate').textContent=result.prediction_date;$('#resultPrevious').textContent=fmt(result.previous_day_kwh)+' kWh';$('#resultModel').textContent=result.model_trained?'Trained ML model':'Fallback model';$('#summaryDate').textContent=result.prediction_date;$('#summaryPrevious').textContent=fmt(result.previous_day_kwh)+' kWh';$('#summaryDayType').textContent=result.day_type;$('#quickResult').textContent=fmt(result.predicted_kwh)+' kWh';$('#quickResultNote').textContent='Saved to prediction history';toast('Prediction saved successfully.');await loadAll();goPage('predict');}catch(e){toast('Prediction failed: '+e.message)}finally{btn.disabled=false;btn.textContent=old}}
 $('#predictForm').addEventListener('submit',e=>{e.preventDefault();submitPrediction(e.currentTarget)});$('#quickForm').addEventListener('submit',e=>{e.preventDefault();submitPrediction(e.currentTarget)});
 async function loadAnalytics(){try{const rows=await api('/api/predictions?limit='+$('#analyticsRange').value);const actualCount=rows.filter(r=>r.actual_kwh!=null).length;$('#analyticsCount').textContent=rows.length;$('#analyticsActualCount').textContent=actualCount;$('#analyticsAverage').textContent=rows.length?fmt(rows.reduce((s,r)=>s+r.predicted_kwh,0)/rows.length)+' kWh':'— kWh';$('#analyticsMax').textContent=rows.length?fmt(Math.max(...rows.map(r=>r.predicted_kwh)))+' kWh':'— kWh';const sorted=rows.slice().reverse();const labels=sorted.map(r=>r.prediction_date.slice(5));const empty=!rows.length;['analyticsEmpty','dailyEmpty','dayTypeEmpty'].forEach(id=>toggleEmpty(id,empty));if(empty){['analyticsTrend','dailyChart','dayTypeChart'].forEach(destroyChart);return}makeChart('analyticsTrend','line',labels,[lineDataset('Predicted',sorted.map(r=>r.predicted_kwh),'#31b9ff'),lineDataset('Actual',sorted.map(r=>r.actual_kwh),'#a96bff',[5,4])]);makeChart('dailyChart','bar',labels, [{label:'Predicted kWh',data:sorted.map(r=>r.predicted_kwh),backgroundColor:'#1688f5',borderRadius:4}],{scales:{x:{...chartDefaults.scales.x,ticks:{...chartDefaults.scales.x.ticks,maxTicksLimit:8}},y:chartDefaults.scales.y}});const wd=rows.filter(r=>r.day_type==='Weekday'),we=rows.filter(r=>r.day_type==='Weekend');makeChart('dayTypeChart','doughnut',['Weekday','Weekend'],[{data:[wd.length,we.length],backgroundColor:['#1688f5','#a96bff'],borderWidth:0}],{cutout:'65%',plugins:{legend:{display:true,position:'bottom',labels:{color:'#a9c0df',boxWidth:9,font:{size:10}}}}});}catch(e){toast('Analytics unavailable: '+e.message)}}$('#analyticsRange').addEventListener('change',loadAnalytics);
@@ -30,3 +75,35 @@ $('#profileForm').addEventListener('submit',e=>{e.preventDefault();localStorage.
 function downloadCsv(){if(!predictions.length){toast('No prediction records to export yet.');return}const cols=['id','prediction_date','day_type','previous_day_kwh','predicted_kwh','actual_kwh','created_at'];const lines=[cols.join(','),...predictions.map(r=>cols.map(c=>{const v=r[c]??'';return '"'+String(v).replaceAll('"','""')+'"'}).join(','))];const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='powerpredict_history.csv';a.click();URL.revokeObjectURL(url);toast('CSV export downloaded.')}
 $('#exportCsv').addEventListener('click',downloadCsv);$('#exportCsv2').addEventListener('click',downloadCsv);$('#historySearch').addEventListener('input',e=>{const q=e.target.value.toLowerCase();renderRows(predictions.filter(r=>r.prediction_date.includes(q)||r.day_type.toLowerCase().includes(q)),'#historyRows')});async function clearHistory(){if(!confirm('Delete all saved prediction history from the database? This cannot be undone.'))return;try{await api('/api/predictions',{method:'DELETE'});toast('Prediction history cleared.');await loadAll();loadAnalytics();loadInsights()}catch(e){toast('Could not clear history: '+e.message)}}$('#clearHistory').addEventListener('click',clearHistory);$('#clearHistory2').addEventListener('click',clearHistory);
 initDates();loadProfile();loadAll();
+document.addEventListener('click', async function(e) {
+    if (!e.target.classList.contains('save-actual-btn')) return;
+
+    const id = e.target.dataset.id;
+    const input = document.querySelector(`.actual-input[data-id="${id}"]`);
+
+    if (!input) return;
+
+    const actualKwh = Number(input.value);
+
+    if (input.value.trim() === '' || !Number.isFinite(actualKwh) || actualKwh < 0) {
+        alert('Enter a valid actual consumption value.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/api/predictions/${id}/actual?actual_kwh=${actualKwh}`, {
+            method: 'PATCH'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to save actual consumption.');
+        }
+
+        alert('Actual consumption saved!');
+        await loadHistory();
+    } catch (error) {
+        alert(error.message);
+    }
+});
+
+

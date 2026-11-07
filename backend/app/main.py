@@ -18,36 +18,70 @@ app = FastAPI(title='PowerPredict API', version='1.0.0', description='Electricit
 origins = os.getenv('CORS_ORIGINS', 'http://127.0.0.1:5500,http://localhost:5500,http://127.0.0.1:8000').split(',')
 app.add_middleware(CORSMiddleware, allow_origins=[x.strip() for x in origins], allow_credentials=True, allow_methods=['*'], allow_headers=['*'])
 
+
+model = None
+
 @app.on_event('startup')
 def startup():
+    global model
+
     Base.metadata.create_all(bind=engine)
+
+    # Load the trained model only once
+    if MODEL_PATH.exists():
+        try:
+            bundle = joblib.load(MODEL_PATH)
+            if isinstance(bundle, dict):
+                model = bundle.get('model')
+        except Exception as e:
+            print("Model loading error:", e)
+
     with Session(engine) as db:
-        defaults = {'theme':'Dark','chart_style':'Line & Bar','language':'English','notifications':'true'}
+        defaults = {
+            'theme': 'Dark',
+            'chart_style': 'Line & Bar',
+            'language': 'English',
+            'notifications': 'true'
+        }
+
         for key, value in defaults.items():
-            if not db.scalar(select(AppSetting).where(AppSetting.setting_key == key)):
-                db.add(AppSetting(setting_key=key, setting_value=value))
+            if not db.scalar(
+                select(AppSetting).where(AppSetting.setting_key == key)
+            ):
+                db.add(AppSetting(
+                    setting_key=key,
+                    setting_value=value
+                ))
+
         db.commit()
 
-def model_bundle():
-    if MODEL_PATH.exists():
-        try: return joblib.load(MODEL_PATH)
-        except Exception: pass
-    return None
-
 def predict_kwh(day: date, previous: float, db: Session) -> float:
-    bundle = model_bundle()
-    dow, month = day.weekday(), day.month
-    recent = db.scalars(select(Prediction).where(Prediction.prediction_date < day).order_by(Prediction.prediction_date.desc()).limit(7)).all()
-    recent_values = [x.predicted_kwh for x in recent]
-    rolling = float(np.mean(recent_values)) if recent_values else previous
-    features = pd.DataFrame([{'day_of_week':dow,'month':month,'day_of_month':day.day,'previous_day_kwh':previous,'rolling_7day_kwh':rolling}])
-    if bundle and 'model' in bundle:
-        result = float(bundle['model'].predict(features)[0])
-    else:
-        # Clearly marked fallback until the provided dataset has been used to train the model.
-        result = previous * (1.04 if dow in (4,5) else 0.98)
-    return round(max(0.0, result), 2)
 
+    dow, month = day.weekday(), day.month
+
+    recent = db.scalars(
+        select(Prediction.predicted_kwh)
+        .where(Prediction.prediction_date < day)
+        .order_by(Prediction.prediction_date.desc())
+        .limit(7)
+    ).all()
+
+    rolling = float(np.mean(recent)) if recent else previous
+
+    features = pd.DataFrame([{
+        'day_of_week': dow,
+        'month': month,
+        'day_of_month': day.day,
+        'previous_day_kwh': previous,
+        'rolling_7day_kwh': rolling
+    }])
+
+    if model is not None:
+        result = float(model.predict(features)[0])
+    else:
+        result = previous * (1.04 if dow in (4, 5) else 0.98)
+
+    return round(max(0.0, result), 2)
 def row_dict(row):
     return {'id':row.id,'prediction_date':row.prediction_date.isoformat(),'day_type':row.day_type,'previous_day_kwh':round(row.previous_day_kwh,2),'predicted_kwh':round(row.predicted_kwh,2),'actual_kwh':round(row.actual_kwh,2) if row.actual_kwh is not None else None,'created_at':row.created_at.isoformat() if row.created_at else None}
 
